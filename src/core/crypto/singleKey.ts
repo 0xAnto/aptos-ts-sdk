@@ -12,7 +12,6 @@ import { Secp256k1PublicKey, Secp256k1Signature } from "./secp256k1";
 import { KeylessPublicKey, KeylessSignature } from "./keyless";
 import { Signature } from "./signature";
 import { FederatedKeylessPublicKey } from "./federatedKeyless";
-import { toSecp256k1Signature } from "./signatureUtils";
 
 /**
  * Represents any public key supported by Aptos.
@@ -204,8 +203,11 @@ export class AnyPublicKey extends AccountPublicKey {
     recoveryBit: number;
   }): AnyPublicKey {
     const { signature, message, recoveryBit } = args;
+    if (!Secp256k1Signature.isInstance(signature.signature)) {
+      throw new Error("AnySignature variant is not Secp256k1");
+    }
     const publicKey = Secp256k1PublicKey.fromSignatureAndMessage({
-      signature: toSecp256k1Signature(signature),
+      signature: signature.signature,
       message,
       recoveryBit,
     });
