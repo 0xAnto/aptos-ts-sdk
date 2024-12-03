@@ -29,14 +29,7 @@ import {
 } from "../types";
 import { AccountAddress, AccountAddressInput } from "../core/accountAddress";
 import { Account } from "../account";
-import {
-  AnyPublicKey,
-  AnySignature,
-  Ed25519PublicKey,
-  PrivateKey,
-  Secp256k1PublicKey,
-  Secp256k1Signature,
-} from "../core/crypto";
+import { AnyPublicKey, AnySignature, Ed25519PublicKey, PrivateKey, Secp256k1Signature } from "../core/crypto";
 import { queryIndexer } from "./general";
 import {
   GetAccountCoinsCountQuery,
@@ -64,7 +57,6 @@ import { CurrentFungibleAssetBalancesBoolExp } from "../types/generated/types";
 import { getTableItem } from "./table";
 import { APTOS_COIN } from "../utils";
 import { AptosApiError } from "../errors";
-import { toSecp256k1Signature } from "../core/crypto/signatureUtils";
 
 /**
  * Retrieves account information for a specified account address.
@@ -840,12 +832,13 @@ export async function isAccountExist(args: { aptosConfig: AptosConfig; authKey: 
 export async function verifySecp256k1Account(args: {
   aptosConfig: AptosConfig;
   message: HexInput;
-  signature: HexInput | Secp256k1Signature | AnySignature;
-  recoveryBit?: number;
+  signature: Secp256k1Signature | AnySignature;
   accountAddress: AccountAddressInput;
+  recoveryBit?: number;
 }): Promise<AnyPublicKey> {
   const { aptosConfig, message, recoveryBit, accountAddress } = args;
-  const signature = toSecp256k1Signature(args.signature);
+  const signature = AnySignature.isInstance(args.signature) ? args.signature : new AnySignature(args.signature);
+
   const { authentication_key: authKeyString } = await getInfo({
     aptosConfig,
     accountAddress,
@@ -853,13 +846,11 @@ export async function verifySecp256k1Account(args: {
   const authKey = new AuthenticationKey({ data: authKeyString });
 
   if (recoveryBit !== undefined) {
-    const publicKey = new AnyPublicKey(
-      Secp256k1PublicKey.fromSignatureAndMessage({
-        signature,
-        message,
-        recoveryBit,
-      }),
-    );
+    const publicKey = AnyPublicKey.fromSecp256k1SignatureAndMessage({
+      signature,
+      message,
+      recoveryBit,
+    });
     const derivedAuthKey = publicKey.authKey();
     if (authKey.toStringWithoutPrefix() === derivedAuthKey.toStringWithoutPrefix()) {
       return publicKey;
@@ -872,13 +863,11 @@ export async function verifySecp256k1Account(args: {
 
   for (let i = 0; i < 4; i += 1) {
     try {
-      const publicKey = new AnyPublicKey(
-        Secp256k1PublicKey.fromSignatureAndMessage({
-          signature,
-          message,
-          recoveryBit: i,
-        }),
-      );
+      const publicKey = AnyPublicKey.fromSecp256k1SignatureAndMessage({
+        signature,
+        message,
+        recoveryBit: i,
+      });
       const derivedAuthKey = publicKey.authKey();
       if (authKey.toStringWithoutPrefix() === derivedAuthKey.toStringWithoutPrefix()) {
         return publicKey;
