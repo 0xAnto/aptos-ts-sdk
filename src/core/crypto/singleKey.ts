@@ -1,5 +1,10 @@
 import { Deserializer, Serializer } from "../../bcs";
-import { AnyPublicKeyVariant, AnySignatureVariant, SigningScheme as AuthenticationKeyScheme } from "../../types";
+import {
+  AnyPublicKeyVariant,
+  AnySignatureVariant,
+  SigningScheme as AuthenticationKeyScheme,
+  HexInput,
+} from "../../types";
 import { AuthenticationKey } from "../authenticationKey";
 import { Ed25519PublicKey, Ed25519Signature } from "./ed25519";
 import { AccountPublicKey, PublicKey, VerifySignatureArgs } from "./publicKey";
@@ -7,6 +12,7 @@ import { Secp256k1PublicKey, Secp256k1Signature } from "./secp256k1";
 import { KeylessPublicKey, KeylessSignature } from "./keyless";
 import { Signature } from "./signature";
 import { FederatedKeylessPublicKey } from "./federatedKeyless";
+import { toSecp256k1Signature } from "./signatureUtils";
 
 /**
  * Represents any public key supported by Aptos.
@@ -199,7 +205,7 @@ export class AnySignature extends Signature {
   /**
    * Index of the underlying enum variant
    */
-  private readonly anySignatureVariant: AnySignatureVariant;
+  private readonly variant: AnySignatureVariant;
 
   // region Constructors
 
@@ -208,11 +214,11 @@ export class AnySignature extends Signature {
     this.signature = signature;
 
     if (signature instanceof Ed25519Signature) {
-      this.anySignatureVariant = AnySignatureVariant.Ed25519;
+      this.variant = AnySignatureVariant.Ed25519;
     } else if (signature instanceof Secp256k1Signature) {
-      this.anySignatureVariant = AnySignatureVariant.Secp256k1;
+      this.variant = AnySignatureVariant.Secp256k1;
     } else if (signature instanceof KeylessSignature) {
-      this.anySignatureVariant = AnySignatureVariant.Keyless;
+      this.variant = AnySignatureVariant.Keyless;
     } else {
       throw new Error("Unsupported signature type");
     }
@@ -237,7 +243,7 @@ export class AnySignature extends Signature {
   // region Serializable
 
   serialize(serializer: Serializer): void {
-    serializer.serializeU32AsUleb128(this.anySignatureVariant);
+    serializer.serializeU32AsUleb128(this.variant);
     this.signature.serialize(serializer);
   }
 
@@ -264,11 +270,32 @@ export class AnySignature extends Signature {
 
   static isInstance(signature: Signature): signature is AnySignature {
     return (
-      "anySignatureVariant" in signature &&
       "signature" in signature &&
       typeof signature.signature === "object" &&
       signature.signature !== null &&
       "toUint8Array" in signature.signature
     );
+  }
+
+  /**
+   * Recover a Secp256k1 public key from a signature and message.
+   *
+   * @param args - The arguments for recovering the public key.
+   * @param args.signature - The signature to recover the public key from.
+   * @param args.message - The message that was signed.
+   * @param args.recoveryBit - The recovery bit to use for the public key.
+   */
+  static fromSecp256k1SignatureAndMessage(args: {
+    signature: AnySignature;
+    message: HexInput;
+    recoveryBit: number;
+  }): AnyPublicKey {
+    const { signature, message, recoveryBit } = args;
+    const publicKey = Secp256k1PublicKey.fromSignatureAndMessage({
+      signature: toSecp256k1Signature(signature),
+      message,
+      recoveryBit,
+    });
+    return new AnyPublicKey(publicKey);
   }
 }

@@ -7,10 +7,10 @@ import { HDKey } from "@scure/bip32";
 import { bytesToNumberBE, inRange } from "@noble/curves/abstract/utils";
 import { Serializable, Deserializer, Serializer } from "../../bcs";
 import { Hex } from "../hex";
-import { HexInput, isHexInput, PrivateKeyVariants } from "../../types";
+import { HexInput, PrivateKeyVariants } from "../../types";
 import { isValidBIP44Path, mnemonicToSeed } from "./hdKey";
 import { PrivateKey } from "./privateKey";
-import { PublicKey } from "./publicKey";
+import { PublicKey, VerifySignatureArgs } from "./publicKey";
 import { Signature } from "./signature";
 import { convertSigningMessage } from "./utils";
 
@@ -57,7 +57,7 @@ export class Secp256k1PublicKey extends PublicKey {
    * @param args.message - The message that was signed.
    * @param args.signature - The signature to verify against the public key.
    */
-  verifySignature(args: { message: HexInput; signature: Secp256k1Signature }): boolean {
+  verifySignature(args: VerifySignatureArgs): boolean {
     const { message, signature } = args;
     const messageToVerify = convertSigningMessage(message);
     const messageBytes = Hex.fromHexInput(messageToVerify).toUint8Array();
@@ -138,12 +138,11 @@ export class Secp256k1PublicKey extends PublicKey {
    * @param args.recoveryBit - The recovery bit to use for the public key.
    */
   static fromSignatureAndMessage(args: {
-    signature: HexInput | Secp256k1Signature;
+    signature: Secp256k1Signature;
     message: HexInput;
     recoveryBit: number;
   }): Secp256k1PublicKey {
-    const { message, recoveryBit } = args;
-    const signature = isHexInput(args.signature) ? new Secp256k1Signature(args.signature) : args.signature;
+    const { signature, message, recoveryBit } = args;
     const signatureBytes: Uint8Array = signature.toUint8Array();
 
     const r = bytesToNumberBE(signatureBytes.subarray(0, 32)); // Let r = int(sig[0:32]); fail if r ≥ p.
@@ -349,10 +348,15 @@ export class Secp256k1Signature extends Signature {
   static readonly LENGTH = 64;
 
   /**
+   * Automatically added when constructed or de-serialized.  Used for type checking.
+   */
+  private readonly signatureType = "secp256k1";
+
+  /**
    * The signature bytes
    * @private
    */
-  private readonly secp256k1SigData: Hex;
+  private readonly data: Hex;
 
   // region Constructors
 
@@ -369,7 +373,7 @@ export class Secp256k1Signature extends Signature {
         `Signature length should be ${Secp256k1Signature.LENGTH}, received ${data.toUint8Array().length}`,
       );
     }
-    this.secp256k1SigData = data;
+    this.data = data;
   }
 
   // endregion
@@ -377,7 +381,7 @@ export class Secp256k1Signature extends Signature {
   // region Signature
 
   toUint8Array(): Uint8Array {
-    return this.secp256k1SigData.toUint8Array();
+    return this.data.toUint8Array();
   }
 
   // endregion
@@ -385,7 +389,7 @@ export class Secp256k1Signature extends Signature {
   // region Serializable
 
   serialize(serializer: Serializer): void {
-    serializer.serializeBytes(this.secp256k1SigData.toUint8Array());
+    serializer.serializeBytes(this.data.toUint8Array());
   }
 
   static deserialize(deserializer: Deserializer): Secp256k1Signature {
@@ -404,7 +408,10 @@ export class Secp256k1Signature extends Signature {
    */
   static isInstance(signature: any): signature is Secp256k1Signature {
     return (
-      "secp256k1SigData" in signature && (signature.secp256k1SigData.data as any)?.length === Secp256k1Signature.LENGTH
+      "signatureType" in signature &&
+      signature.signatureType === "secp256k1" &&
+      "data" in signature &&
+      (signature.data.data as any)?.length === Secp256k1Signature.LENGTH
     );
   }
 }
